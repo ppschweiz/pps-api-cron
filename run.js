@@ -63,41 +63,47 @@ function high_member_id(state, offset, limit, callback) {
 }
 
 function update_member_id(state, offset, limit, callback) {
-        crmAPI.get ('Membership',{'options': {'offset': offset, 'limit': limit}, 'status_id': 'Expired', 'membership_type_id': 'PPS', 'return': 'contact_id' },
-                function (result) {
-                        assert.equal(result.is_error, 0, "API call failed: " + JSON.stringify(result));
-                        for (var i in result.values) {
-                                var membership = result.values[i];
+        crmAPI.get ('Membership',{'options': {'offset': offset, 'limit': limit}, 'membership_type_id': 'PPS', 'return': 'contact_id' },
+                function (membership_result) {
+                        assert.equal(membership_result.is_error, 0, "API call failed: " + JSON.stringify(membership_result));
+
+                        for (var i in membership_result.values) {
+                                var membership = membership_result.values[i];
 
 				if (!contains(state.has_id, membership.contact_id)) {
 
-					crmAPI.get('Contact', { 'id': membership.contact_id },
-						function(result) {
-							assert.equal(result.is_error, 0, "API call failed: " + JSON.stringify(result));
+					 crmAPI.get('Contact', { 'id': membership.contact_id },
+						function(contact_result) {
+							assert.equal(contact_result.is_error, 0, "API call failed: " + JSON.stringify(contact_result));
 
-							if (result.count == 1) {
-								member_id = state.high_id + 1;
-								state.high_id = member_id;
+							if (contact_result.count == 1) {
+								var contact = contact_result.values[0];
 
-								console.log("member id assignment required: " + membership.contact_id + " => " + member_id);
+								if (!contains(state.has_id, contact.id)) {
+									member_id = state.high_id + 1;
+									state.high_id = member_id;
+									state.has_id.push(contact.id);
+
+									console.log("member id assignment required: " + contact.id + " => " + member_id);
 					
-//					crmAPI.update('Contact', { 'id': membership.contact_id, 'external_identifier': member_id  }, 
-//						function(update_result) {
-//							if (update_result.is_error != 0) {
-//								console.log("update member_id error");
-//								console.log(update_result);
-//							} else {
-//								var update_contact = update_result.values[0];
-//								console.log("Assigned ID " + update_contact.external_identifier + " to " + update_contact.sort_name);
-//							}
-//						});
+									crmAPI.update('Contact', { 'id': contact.id, 'external_identifier': member_id  }, 
+										function(update_result) {
+											if (update_result.is_error != 0) {
+												console.log("update member_id error");
+												console.log(update_result);
+											} else {
+												var update_contact = update_result.values[0];
+												console.log("Assigned ID " + update_contact.external_identifier + " to " + update_contact.sort_name);
+											}
+										});
+								}
 							}
 						});
 				}
 			}
 
 			if (callback)
-				callback(result.count);
+				callback(membership_result.count);
 		});
 }
 
@@ -115,7 +121,7 @@ function update_pay_links(state, offset, limit, callback) {
 					var pay_url = paylink_base + "/pay#" + sha1(pay_secret + ":paylink/" + member_id).substring(0,20) + "/" + member_id;
 
 					if (pdf_url != contact.custom_13 && pay_url != contact.custom_14) {
-						console.log("Pay link update required for " + update_contact.external_identifier + " " + update_contact.sort_name);
+						console.log("Pay link update required for " + contact.external_identifier + " " + contact.sort_name);
 
 						crmAPI.update('Contact', { 'id': contact.id, 'custom_13': pdf_url, 'custom_14': pay_url }, 
 							function(update_result) {
@@ -162,7 +168,7 @@ function invoke_recursive_update_member_id(state, offset, limit, final_callback)
 
 function invoke_recursive_update_pay_links(state, offset, limit, final_callback) {
         update_pay_links(state, offset, limit, function(count) {
-                console.log("result update_members: " + count);
+                console.log("result update_pay_links: " + count);
 
                 if (count == limit) {
                         invoke_recursive_update_pay_links(state, offset+limit, limit, final_callback);
